@@ -1064,6 +1064,7 @@ module Discordrb
         notify_ready
       end
 
+      LOGGER.debug("************* Event type #{type} received.")
       case type
       when :READY
         # As READY may be called multiple times over a single process lifetime, we here need to reset the cache entirely
