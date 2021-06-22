@@ -37,6 +37,8 @@ require 'discordrb/gateway'
 
 require 'discordrb/voice/voice_bot'
 
+require 'discordrb/application_commands/builder'
+
 module Discordrb
   # Represents a Discord bot, including servers, users, etc.
   class Bot
@@ -214,6 +216,12 @@ module Discordrb
       Application.new(JSON.parse(response), self)
     end
 
+    # The both's OAuth application ID.
+    # @return [Integer] The ID of the bot's application.
+    def client_id
+      @client_id ||= bot_application.id
+    end
+
     alias_method :bot_app, :bot_application
 
     # The Discord API token received when logging in. Useful to explicitly call
@@ -288,6 +296,21 @@ module Discordrb
       server_id_str = server ? "&guild_id=#{server.id}" : ''
       permission_bits_str = permission_bits ? "&permissions=#{permission_bits}" : ''
       "https://discord.com/oauth2/authorize?&client_id=#{@client_id}#{server_id_str}#{permission_bits_str}&scope=bot"
+    end
+
+    # Register an application command.
+    # @param name [String]
+    # @param description [String]
+    # @param server_id [String, Integer] Server ID if creating a server specific command
+    # @yieldparam Discordrb::ApplicationCommands::Builder
+    def register_application_command(name, description, server_id: nil, &block)
+      cmd = Discordrb::ApplicationCommands::Builder.new(name, description, &block).to_h
+
+      if server_id
+        Discordrb::API::Application.create_guild_command(@token, client_id, server_id, cmd[:name], cmd[:description], cmd[:options])
+      else
+        Discordrb::API::Application.create_global_command(@token, client_id, cmd[:name], cmd[:description], cmd[:options])
+      end
     end
 
     # @return [Hash<Integer => VoiceBot>] the voice connections this bot currently has, by the server ID to which they are connected.
@@ -1364,6 +1387,15 @@ module Discordrb
         end
       when :WEBHOOKS_UPDATE
         event = WebhookUpdateEvent.new(data, self)
+        raise_event(event)
+      when :INTERACTION_CREATE
+        # TODO: some kind of enum for this would be preferable to literals
+        event = case data['type']
+                when 2 # ApplicationCommand
+                  ApplicationCommandEvent.new(data, self)
+                else
+                  InteractionCreateEvent.new(data, self)
+                end
         raise_event(event)
       else
         # another event that we don't support yet
